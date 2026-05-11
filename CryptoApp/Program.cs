@@ -1,47 +1,162 @@
 ﻿using System;
-using System.Security.Cryptography;
+using System.IO;
 
 namespace CryptoApp
 {
     class Program
     {
+        static string containerName;
+
         static void Main(string[] args)
         {
-            Console.WriteLine("=== Финальная проверка ===");
-            Console.WriteLine("Пытаемся создать алгоритмы через стандартные методы .NET...");
-
-            // --- Проверка хэширования ---
-            // Используем стандартный метод .NET. КриптоПро перехватит этот вызов.
-            using (HashAlgorithm gostHash = HashAlgorithm.Create("GOST3411"))
+            while (true)
             {
-                if (gostHash != null)
+                Console.Clear();
+                Console.WriteLine("=== МЕНЮ ===");
+                Console.WriteLine("1. Сгенерировать ключи");
+                Console.WriteLine("2. Загрузить ключи");
+                Console.WriteLine("3. Подписать файл");
+                Console.WriteLine("4. Проверить подпись");
+                Console.WriteLine("0. Выход");
+                Console.Write("Выбор: ");
+
+                string choice = Console.ReadLine();
+
+                switch (choice)
                 {
-                    Console.WriteLine("УСПЕХ: Алгоритм хэширования ГОСТ Р 34.11-2012 найден!");
-                    Console.WriteLine("Полное имя объекта: " + gostHash.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("ОШИБКА: Алгоритм хэширования не найден.");
+                    case "1": GenerateKeys(); break;
+                    case "2": LoadKeys(); break;
+                    case "3": SignAFile(); break;
+                    case "4": VerifyAFile(); break;
+                    case "0": return;
+                    default:
+                        Console.WriteLine("Неверный выбор.");
+                        PressEnter();
+                        break;
                 }
             }
+        }
 
-            // --- Проверка подписи ---
-            // Используем стандартный метод .NET. КриптоПро перехватит этот вызов.
-            using (AsymmetricAlgorithm gostSign = AsymmetricAlgorithm.Create("GOST3410"))
+        private static void GenerateKeys()
+        {
+            Console.Clear();
+            Console.WriteLine("🔐 Генерация новой ключевой пары...");
+
+            // --- 2. СОХРАНЯЕМ РЕЗУЛЬТАТ В ГЛОБАЛЬНУЮ ПЕРЕМЕННУЮ ---
+            containerName = KeyManager.GenerateKeys();
+
+            if (containerName != null)
+                Console.WriteLine($"Имя контейнера: {containerName}");
+
+            PressEnter();
+        }
+
+        private static void LoadKeys()
+        {
+            Console.Clear();
+            Console.WriteLine("📂 Загрузка ключей из файла...");
+
+            // --- 3. СОХРАНЯЕМ РЕЗУЛЬТАТ В ГЛОБАЛЬНУЮ ПЕРЕМЕННУЮ ---
+            containerName = KeyManager.LoadContainerName();
+
+            if (containerName != null)
+                Console.WriteLine($"Загружен контейнер: {containerName}");
+
+            PressEnter();
+        }
+
+        private static void SignAFile()
+        {
+            // --- 4. ИСПОЛЬЗУЕМ ГЛОБАЛЬНУЮ ПЕРЕМЕННУЮ ---
+            if (string.IsNullOrEmpty(containerName))
             {
-                if (gostSign != null)
-                {
-                    Console.WriteLine("УСПЕХ: Алгоритм подписи ГОСТ Р 34.10-2012 найден!");
-                    Console.WriteLine("Полное имя объекта: " + gostSign.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("ОШИБКА: Алгоритм подписи не найден.");
-                }
+                ShowError("Ошибка: Сначала нужно сгенерировать или загрузить ключи.");
+                PressEnter();
+                return;
             }
 
-            Console.WriteLine("\nНажмите Enter для выхода...");
+            Console.Clear();
+            Console.Write("Введите путь к файлу для подписи: ");
+            string filePath = Console.ReadLine();
+
+            if (!File.Exists(filePath))
+            {
+                ShowError("Файл не найден.");
+                PressEnter();
+                return;
+            }
+
+            string sigPath = filePath + ".sig";
+
+            // Передаем глобальную переменную в метод подписи
+            SignatureManager.SignFile(filePath, containerName, sigPath);
+
+            PressEnter();
+        }
+
+        private static void VerifyAFile()
+        {
+            // Проверяем наличие файла с открытым ключом через публичную константу
+            if (!File.Exists(SignatureManager.PublicKeyFileName))
+            {
+                ShowError($"Ошибка: Файл с открытым ключом ({SignatureManager.PublicKeyFileName}) не найден.");
+                PressEnter();
+                return;
+            }
+
+            Console.Clear();
+            Console.Write("Введите путь к исходному файлу: ");
+            string filePath = Console.ReadLine();
+
+            if (!File.Exists(filePath))
+            {
+                ShowError("Файл не найден.");
+                PressEnter();
+                return;
+            }
+
+            string sigPath = filePath + ".sig";
+
+            if (!File.Exists(sigPath))
+            {
+                ShowError($"Файл подписи {sigPath} не найден.");
+                PressEnter();
+                return;
+            }
+
+            bool isValid = SignatureManager.VerifyFile(filePath, sigPath);
+
+            if (isValid)
+            {
+                ShowSuccess("✅ Подпись ВЕРНА!");
+            }
+            else
+            {
+                ShowError("❌ Подпись НЕВЕРНА или файл был изменен!");
+            }
+
+            PressEnter();
+        }
+
+        // --- Вспомогательные методы ---
+        private static void PressEnter()
+        {
+            Console.WriteLine("\nНажмите Enter для возврата в меню...");
             Console.ReadLine();
+        }
+
+        private static void ShowSuccess(string message)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine(message);
+            Console.ResetColor();
+        }
+
+        private static void ShowError(string message)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine(message);
+            Console.ResetColor();
         }
     }
 }
